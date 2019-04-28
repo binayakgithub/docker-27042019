@@ -1,0 +1,3253 @@
+﻿java rpm package
+============
+wget --no-cookies --no-check-certificate --header "Cookie:oraclelicense=accept-securebackup-cookie" "Cookie:oraclelicense=accept-securebackup-cookie"  "http://download.oracle.com/otn-pub/java/jdk/8u131-b11/d54c1d3a095b4ff2b6607d096fa80163/jdk-8u131-linux-x64.rpm"
+
+
+
+
+
+
+The following image shows the standard and traditional architecture of virtualization.
+Virtualization
+
+    The server is the physical server that is used to host multiple virtual machines.
+
+    The Host OS is the base machine such as Linux or Windows.
+
+    The Hypervisor is either VMWare or Windows Hyper V that is used to host virtual machines.
+
+    You would then install multiple operating systems as virtual machines on top of the existing hypervisor as Guest OS.
+
+    You would then host your applications on top of each Guest OS.
+
+The following image shows the new generation of virtualization that is enabled via Dockers. Let’s have a look at the various layers.
+Various Layers
+
+    The server is the physical server that is used to host multiple virtual machines. So this layer remains the same.
+
+    The Host OS is the base machine such as Linux or Windows. So this layer remains the same.
+
+    Now comes the new generation which is the Docker engine. This is used to run the operating system which earlier used to be virtual machines as Docker containers.
+
+    All of the Apps now run as Docker containers.
+
+The clear advantage in this architecture is that you don’t need to have extra hardware for Guest OS. Everything works as Docker containers.
+
+
+  Docker-ce  installation  steps:
+==================================
+
+ sudo yum install -y yum-utils device-mapper-persistent-data lvm2 vim  curl
+   19   sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo 
+   20   sudo yum install docker-ce -y 
+   21   systemctl enable docker.service
+   22   systemctl start docker.service
+   23   systemctl stop docker.service
+   24   systemctl restart docker.service
+   25   systemctl status docker.service
+   26  ip a list docker0
+   27  docker info
+   28  grep  docker  /etc/group 
+   29  grep  docker*   /etc/group 
+   30  grep  *docker*   /etc/group 
+   31  userdel  -r docker 
+   32  grep  *docker*   /etc/group 
+   33  useradd  docker 
+   34  id  docker 
+#############################################################
+Installing Docker-Ce Using Ansible
+---------------------------------
+#cat docker-ce.yml
+---
+- hosts: all
+  remote_user: ansible
+  connection: ssh
+  become: yes
+  tasks:
+        - name: Install pip
+          yum:
+            name: python-pip
+            state: latest
+
+        - name: Install docker-py
+          pip:
+            name: docker-py
+            state: latest
+
+        - name: Install yum-utils
+          yum:
+            name: yum-utils
+            state: latest
+
+        - name: Install device-mapper-persistent-data
+          yum:
+            name: device-mapper-persistent-data
+            state: latest
+
+        - name: Install lvm2
+          yum:
+            name: lvm2
+            state: latest
+
+        - name: Add Docker repo
+          get_url:
+            url: https://download.docker.com/linux/centos/docker-ce.repo
+            dest: /etc/yum.repos.d/docer-ce.repo
+
+        - name: Enable docker edge repo
+          ini_file:
+            dest: /etc/yum.repos.d/docer-ce.repo
+            section: 'docker-ce-edge'
+            option: enabled
+            value: 0
+
+        - name: Enable Docker Test repo
+          ini_file:
+            dest: /etc/yum.repos.d/docer-ce.repo
+            section: 'docker-ce-test'
+            option: enabled
+            value: 0
+
+        - name: Install Docker
+          yum:
+            name: docker-ce
+            state: latest
+
+        - name: start docker service
+          service:
+            name: docker
+            state: started
+
+To create a container using Ansible
+===================================
+[ansible@master project]$ cat container.yml 
+---
+- hosts: all
+  remote_user: ansible
+  connection: ssh
+  become: yes
+  vars:
+        - image: docker.io/busybox
+        - name: container2
+        - src_port: 8080
+        - dest_port: 80
+        - src_vol: /mnt
+        - dest_vol: /tmp
+        - privileged: true
+  tasks:
+        
+        - name: Install python-docker on Red Hat based distribution
+          yum: 
+            name: python-docker
+            enablerepo: extras
+            state: latest
+          when: ansible_os_family == 'Redhat'
+
+        - name: Create Container
+          docker_container:
+            name: "{{ name  }}"
+            image: "{{ image }}"
+            state: started
+            interactive: yes
+            ports:
+              - "{{ src_port }}:{{ dest_port }}"
+            volumes:
+              - "{{ src_vol }}:{{ dest_vol }}"
+            privileged: "{{ privileged }}"
+
+
+To run  sshd deamon in  centos machine inside a container 
+=========================================================
+
+STEP-1>> 
+   
+    Install  docker and pull  centos  images 
+
+STEP-2>>
+    
+   mkdir -Rv /docker/centos.ssh
+
+   touch Dockerfile sshd_config 
+
+STEP-3>> 
+
+[root@host2 centos.ssh]# cat  sshd_config 
+
+  port 22 
+  protocol 2
+
+  HostKey /etc/ssh/ssh_host_rsa_key
+  HostKey /etc/ssh/ssh_host_dsa_key
+  HostKey /etc/ssh/ssh_host_ecda_key
+  HostKey /etc/ssh/ssh_host_ed15519_key
+
+  LoginGraceTime 120
+
+  PermitRootLogin yes
+  StrictModes yes
+  RSAAuthentication yes
+  PubKeyAuthentication yes
+  UsePAM yes
+
+------
+
+STEP-4 >> 
+
+[root@host2 centos.ssh]# cat  Dockerfile 
+  FROM centos
+
+  RUN yum update -y 
+  RUN yum install -y openssh-server 
+  RUN ssh-keygen -A
+  ADD ./sshd_config /etc/ssh/sshd_config 
+  RUN echo  root:redhat | chpasswd 
+  CMD /usr/sbin/sshd -D
+
+---
+
+STEP-5>> 
+  To build the image 
+---------------------
+ # docker build -t dimzrio/centos_ssh .
+ 
+ # docker images 
+
+STEP-6>>
+
+ #docker run  -it -d --name node1 -p 2201:22 dimzrio/centos_ssh
+
+ #docker ps  
+  
+ #docker ps -a 
+
+
+STEP-7>>
+ 
+ To remove all the images and containers 
+
+ # vim  script.sh ; chmod  a+x script.sh
+
+      #!/bin/bash
+    # Delete all containers
+    docker rm $(docker ps -a -q)
+    # Delete all images
+    docker rmi $(docker images -q)
+ :wq
+
+================
+
+STEP-8>>
+
+ To get  network  tool such as ifconfig and  ip command package need to be  install  
+
+ #  yum  install -y iproute net-tools 
+
+
+
+ Hosting apache http web server   
+ =============================
+
+STEP-1 >> 
+
+ # mkdir  /docker1
+ # cd /docker1
+ # vim  Dockerfile 
+
+FROM centos
+RUN yum -y install httpd; yum clean all; systemctl enable httpd;
+RUN echo "Successful Web Server Test" > /var/www/html/index.html
+RUN mkdir /etc/systemd/system/httpd.service.d/; echo -e '[Service]\nRestart=always' > /etc/systemd/system/httpd.service.d/httpd.conf
+EXPOSE 80
+CMD [ "/sbin/init" ]
+
+:wq 
+
+
+STEP-2 >> 
+ To build docker image ..
+--------------------------
+
+ # docker build -t mysysd .
+ 
+To check  the  image 
+--------------------
+ # docker images 
+
+ # docker run -d --name=mysysd_run -p 80:80 mysysd
+
+ To check container ...
+========================
+ # docker  ps  -a 
+
+To check  host ip address 
+===========================
+ # ifconfig 
+
+docker0: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
+        inet 172.17.0.1  netmask 255.255.0.0  broadcast 0.0.0.0
+        inet6 fe80::42:d3ff:fed8:8266  prefixlen 64  scopeid 0x20<link>
+        ether 02:42:d3:d8:82:66  txqueuelen 0  (Ethernet)
+        RX packets 27061  bytes 1618651 (1.5 MiB)
+        RX errors 0  dropped 0  overruns 0  frame 0
+        TX packets 43450  bytes 63912951 (60.9 MiB)
+        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+
+docker_gwbridge: flags=4099<UP,BROADCAST,MULTICAST>  mtu 1500
+        inet 172.18.0.1  netmask 255.255.0.0  broadcast 0.0.0.0
+        ether 02:42:35:ca:66:1c  txqueuelen 0  (Ethernet)
+        RX packets 15887  bytes 1398003 (1.3 MiB)
+        RX errors 0  dropped 0  overruns 0  frame 0
+        TX packets 15887  bytes 1398003 (1.3 MiB)
+        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+
+eth0: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
+        inet 192.168.122.101  netmask 255.255.255.0  broadcast 192.168.122.255
+        inet6 fe80::5359:d390:de83:67b4  prefixlen 64  scopeid 0x20<link>
+        ether 52:54:00:7d:8e:3a  txqueuelen 1000  (Ethernet)
+        RX packets 101617  bytes 142079668 (135.4 MiB)
+        RX errors 0  dropped 11  overruns 0  frame 0
+        TX packets 61545  bytes 4087233 (3.8 MiB)
+        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+
+===============================
+
+To access from out side 
+# curl  http://192.168.122.101/index.html 
+
+
+# mkdir   -pv /Docker/apache 
+
+[root@host2 apache]# cat Dockerfile 
+FROM centos/systemd
+
+MAINTAINER "Your Name" <you@example.com>
+
+RUN yum -y install httpd; yum clean all; systemctl enable httpd.service
+
+EXPOSE 80
+
+CMD ["/usr/sbin/init"]
+
+[root@host2 apache]# 
+
+Hosting php content
+===================
+Step-1:
+[root@host2 src]# pwd
+/docker3/src
+[root@host2 src]# 
+[root@host2 src]# 
+[root@host2 src]# ls
+index.php
+[root@host2 src]# cat  index.php 
+<?php
+echo "Hello Binayak";
+
+[root@host2 src]#
+
+Step-2:
+
+[root@host2 docker3]# pwd
+/docker3
+[root@host2 docker3]# cat Dockerfile 
+FROM php:7.0-apache
+COPY src/ /var/www/html
+EXPOSE 80
+[root@host2 docker3]#
+
+Step-3:
+
+#docker search php:7.0-apache
+#docker pull php:7.0-apache
+#docker images
+#vim /docker3/Dockerfile
+#docker build -t hello-world .
+#docker run -p 80:80 hello-world   (first 80 docker host port, 2nd 80 docker container)
+Then Open browser and check by providing docker host machine ip address (e.g: http://192.168.122.101)
+ 
+#cd /docker3/src/
+#vim index.php(modified content)
+#docker run -p 80:80 hello-world
+Then Open browser and check by providing docker host machine ip address (e.g: http://192.168.122.101)
+#docker run -p 80:80 -v /docker3/src/:/var/www/html/ hello-world (attching mount point)
+#vim index.php (modified the content)
+#docker run -p 80:80 -v /docker3/src/:/var/www/html/ hello-world
+Then Open browser and check by providing docker host machine ip address (e.g: http://192.168.122.101)
+   
+
+
+  
+TO CREATING JENKINS USING DOCKER ....
+++++++++++++++++++++++++++++++++++++++++
+
+# docker  pull  jenkins 
+#docker run -p 8080:8080 -p 50000:50000 -it jenkins bin/bash
+# docker run -ti -p 8080:8080 -p 50000:50000 -v jenkins-data:/var/jenkins_home jenkins
+# docker volume ls
+# docker volume inspect  jenkins-data 
+# docker volume rm jenkins-data
+# cd /var/lib/docker/volumes/jenkins-data/_data
+# docker volume create  myvolumes
+# id 
+
+
+Install Compose on Linux systems
+=================================
+ # sudo curl -L https://github.com/docker/compose/releases/download/1.22.0/docker-compose-$(uname -s)-$(uname -m) -o /usr/local/bin/docker-compose
+
+ # sudo chmod +x /usr/local/bin/docker-compose
+
+ # docker-compose --version 
+
+
+    (OR )
+
+       yum update
+       yum install linux-image-extra-$(uname -r) linux-image-extra-virtual (This before docker install in ubunto machine)
+       yum install docker-engine -y
+       yum install docker -y
+       systemctl enable docker 
+       systemctl start  docker 
+       yum install python-pip -y
+       pip install  docker-compose -y
+       pip install  docker-compose  
+
+       docker  search docker-phpmyadmin | grep corbinu
+ 
+CREATING WORDPRESS MYSQL AND PHP ALL TOGETHER USING DOCER_COMPOSE 
+=================================================================
+       mkdir wordpress
+       cd wordpress/
+
+[root@node3 wordpress]# cat  docker-compose.yml 
+
+wordpress:
+  image: wordpress
+  links: 
+    - wordpress_db:mysql
+  ports:
+    - 8080:80
+wordpress_db:
+  image: mariadb
+  environment: 
+    MYSQL_ROOT_PASSWORD: redhat
+phpmyadmin:
+  image: corbinu/docker-phpmyadmin
+  links: 
+    - wordpress_db:mysql
+  ports:
+    - 8081:80
+  environment: 
+    MYSQL_USERNAME: root
+    MYSQL_ROOT_PASSWORD: redhat
+
+  # docker-compose up -d 
+  # docker-compose  --help
+
+   # docker-compose  down 
+   #  docker-compose up -d 
+
+NOW u can check using url link 
+  first one : - 
+          ipaddr:8080 and ipaddr:8081 
+######################################
+
+Use  nfs share as docker volume 
+--------------------------------
+       yum  install  nfs nfs-utils  -y
+   39  systemctl enable nfs
+   40  systemctl enable nfs-server
+   41  systemctl start  nfs-server
+   42  systemctl start  nfs
+   43  systemctexportfs -rv
+   49  showmount -e 
+   50  hostname -i 
+       systemctl status   nfs
+   44  mkdir  /redhat  
+   45  echo  "/redhat *(rw,async,all_squash)" >> /etc/exports 
+   47  chown  nfsnobody:nfsnobody /redhat
+
+   # vim /etc/nfs.conf
+   
+     got to end of the file  
+
+   nfs.server.mount.require_resv_port = 0
+  :wq
+ 
+  # systemctl restart  nfs-server 
+
+  # docker volume create --driver local --opt type=nfs  --opt o=addr=192.168.122.70,rw --opt device=:/redhat   manoj_volume
+
+   docker volume ls 
+  
+   docker volume inspect manoj_volume 
+
+   docker run -itd -v manoj_volume:/world busybox 
+  
+   92  docker ps
+   93  docker  exec pensive_austin ls /world
+   94  docker  exec pensive_austin touch  /world/file.txt 
+   95  docker  exec pensive_austin ls /world
+   96  cd /redhat  
+   97  ls
+
+
+###################################################
+Client
+======
+    1  yum  install  nfs nfs-utils  -y
+    2  systemctl  enable  nfs-server 
+    3  systemctl  start    nfs-server 
+    4  mkdir /redhat  
+    5  install  -d -m 777 -o nfsnobody -g nfsnobody /OSE_redhat  
+    6  ls -ld  /OSE_redhat/
+    7  echo "/OSE_redhat *(rw,async,all_squash,no_subtree_check,insecure)" >> /etc/exports 
+    8  exportfs  -rv  
+    9  showmount  -e localhost
+   10  firewall-cmd  --permanent --add-service=nfs 
+   11  firewall-cmd  --reload 
+   12  firewall-cmd  --permanent --add-port=2049/tcp 
+   13  firewall-cmd  --reload 
+   14  vim  /etc/hosts
+   15  firewall-cmd  --permanent --add-service=mountd 
+   16  firewall-cmd  --permanent --add-service=rpc-bind 
+   17  firewall-cmd  --reload 
+   18  systemctl  restart nfs-server '
+   19  systemctl  restart nfs-server 
+   20  vim  /etc/nfs.conf 
+   nfs.server.mount.require_resv_port = 0
+  :wq!
+   21  systemctl  restart nfs-server 
+   22  vi /etc/exports
+   23  systemctl  restart  nfs-server 
+   24  ls  /OSE_redhat/
+
+
+
+
+
+
+=================================
+ Creating private docker registry  
+=================================
+
+Url  link for that ====
+=================
+https://www.learnitguide.net/2018/07/create-your-own-private-docker-registry.html
+
+
+
+Steps:
+=====
+1. Create a certificate directory /docker_data/certs/ to hold the TLS certificate
+2. Generate a SSL/TLS certificate to secure our private docker registry
+3. Create a directory to store docker images "/docker_data/images"
+4. Run a docker registry container in docker host "docker-registry"
+5. Pull required docker images to docker host "docker-registry" from docker hub
+6. Push thpse downloaded docker images to docker registry container
+7. Remove old docker images from local docker host
+8. Configure all docker clients to use our certificate
+9. Docker clients can pull and push docker images in our private docker registry
+
+
+
+       yum vim  install -y yum-utils device-mapper-persistent-data lvm2
+    6  yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+    7  yum install docker-ce -y
+    8  systemctl enable docker.service
+    9  systemctl start   docker.service
+   10   systemctl stop docker.service
+   11  systemctl restart docker.service
+   12  systemctl status docker.service
+   13  ip a list docker0
+   14  grep  docker  /etc/group 
+   15  useradd  manoj
+   16  gpasswd  -aG manoj docker  
+   17  gpasswd  -a manoj docker  
+   18  su  - manoj  
+   19   mkdir -p /docker_data/certs/ 
+   20  yum -y install openssl 
+   21  openssl req   -newkey rsa:4096 -nodes -sha256 -keyout /docker_data/certs/domain.key   -x509 -days 365 -out /docker_data/certs/domain.crt
+   22  ls /docker_data/certs/
+   23  ls  -l  /docker_data/certs/
+   24  mkdir -p /docker_data/images 
+   25  docker  search registry 
+   26  docker  search registry
+   27  docker  search registry | grep  docker.io/registry 
+   28   docker run -d -p 5000:5000 -v /docker_data/images:/var/lib/registry -v /docker_data/certs:/certs -e REGISTRY_HTTP_TLS_CERTIFICATE=/certs/domain.crt -e REGISTRY_HTTP_TLS_KEY=/certs/domain.key --restart on-failure --name myregistry docker.io/registry
+   29  docker  pull  busybox 
+   30  docker  images
+   31  docker tag  docker.io/busybox:latest  localhost:5000/my-busybox            
+   32  docker  ps
+   33  docker  images
+   34  docker  pull alpine 
+   35  docker images
+   36  docker tag docker.io/alpine:latest 192.168.122.86/my-alpine 
+   37  docker images
+   38  docker  push  localhost:5000/my-busybox
+
+
+       #cd /docker_data/images/docker/registry/v2/repositories/my-busybox/_layers/sha256
+
+ 
+   39  docker  push  192.168.122.86/my-alpine 
+   40  ip a
+   41  docker tag docker.io/alpine:latest localhost/my-alpine 
+   42  docker  push  localhost/my-alpine 
+   43  docker  images 
+   44  docker  rmi  196d12cf6ab1 
+   45  docker  rmi  -f 196d12cf6ab1 
+   46  docker  images
+   47  docker tag docker.io/alpine:latest 192.168.122.86:5000/my-alpine 
+   48  docker  pull alpine 
+   49  docker tag docker.io/alpine:latest 192.168.122.86:5000/my-alpine 
+   50  docker  push  192.168.122.86:5000/my-alpine
+   51  docker  images
+   52  docker -rmi -f  192.168.122.86:5000/my-alpine
+   53  docker  images
+   54  docker -rmi -f  196d12cf6ab1 
+   55  docker rmi -f  196d12cf6ab1 
+   56  docker  images
+   57  docker  pull alpine  
+   58  docker tag docker.io/alpine:latest localhost:5000/my-alpine 
+   59  docker  push  localhost:5000/my-alpine
+   60   ll /docker_data/images/docker/registry 
+   61   ll /docker_data/images/docker/registry/v2/ 
+   62   ll /docker_data/images/docker/registry/v2/repositories/ 
+   63  docker  images
+   64  docker rmi  -f  59788edf1f3e 59788edf1f3e 196d12cf6ab1 196d12cf6ab1 
+   65  docker  images
+   66  vim  /etc/hosts
+   67  ssh-keygen  
+   68  ssh-copy-id  node4
+   69  ssh node4
+   70  scp  /docker_data/certs/domain.crt root@node4:/root/
+
+
+
+Now Configure Client side 
+==================================
+
+   71  ssh root@node4
+
+
+  241  mkdir  -pv /etc/docker/certs.d
+  242  cd /etc/docker/certs.d
+  243  ls
+  244  mkdir -p  node5.example.com:5000
+  245  cp  -rf  /root/domain.crt node5.example.com:5000/
+  246  cd
+  247  docker images 
+  248  docker  pull node5.example.com:5000/my-alpine 
+  249  docker  images
+  250  docker  pull node5.example.com:5000/my-busybox
+  251  docker  images
+  252  docker images 
+  253  docker run  -itd  --name=binu node5.example.com:5000/my-busybox
+  254  docker  ps
+  255  docker attach  binu 
+  256  docker commit binu  node5.example.com:5000/my-busybox:v1  
+  257  docker  images
+  258  docker  push  node5.example.com:5000/my-busybox:v1 
+  259  docker  ps  
+  260  docker  rm -f binu
+  261  docker  ps  
+  262  docker  ps  -a
+  263  docker  images
+  264  docker  rmi -f 796e2162bfd6 59788edf1f3e 196d12cf6ab1 
+  265  docker  images
+  266  docker  pull   node5.example.com:5000/my-busybox:v1 
+  267  docker  images
+  268  docker run -it --name binu node5.example.com:5000/my-busybox:v1 /bin/bash  
+  269  docker run -itd --name binu node5.example.com:5000/my-busybox:v1 
+  270  docker run -itd  node5.example.com:5000/my-busybox:v1 
+  271  docker ps 
+  272  docker run -itd  --name=binu node5.example.com:5000/my-busybox:v1
+  273  docker ps -a
+  274  docker  rmi  -f  05651c3dc8a5 78087fb3233d 
+  275  docker  rm  -f  05651c3dc8a5 78087fb3233d 
+  276  docker ps -a
+  277  docker run -itd  --name=binu node5.example.com:5000/my-busybox:v1
+  278  docker  attach  binu 
+
+
+More links to refer
+=================== 
+https://www.cloudkb.net/install-private-docker-registry-on-centos-7/
+
+https://www.cloudkb.net/install-private-docker-registry-on-centos-7/
+
+https://www.linuxtechi.com/setup-docker-private-registry-centos-7-rhel-7/
+
+https://www.server-world.info/en/note?os=CentOS_7&p=docker&f=6
+
+
+
+=====================================
+To configure locally private registry 
+=====================================
+
+ docker run -d -p 5000:5000 -v /var/lib/registry:/var/lib/registry --restart=always --name registry registry:2 
+   18  docker ps 
+   19   vi /etc/sysconfig/docker 
+       OPTIONS='--insecure-registry node5.example.com:5000
+--selinux-enabled --log-driver=journald.....' 
+
+   :wq (save and quit)
+
+   20   systemctl restart docker 
+   21  docker images 
+   22  docker4 images
+   23  docker pull   busybox 
+   24  #docker tag centos dlp.srv.world:5000/centos 
+   25  docker images
+   26  docker tag  docker.io/busybox:latest localhost:5000/busybox:v1 
+   27  docker  ps
+   28  docker  images
+   29   docker push localhost:5000/busybox:v1  
+   30   docker images 
+   31  docker rmi docker.io/busybox:latest 
+   32  docker rmi localhost:5000/busybox:v1
+   33  docker images
+   34  docker pull  localhost:5000/busybox:v1
+   35  docker ps
+   36  docker images
+
+#######################################################
+
+
+Export
+------
+docker export is used to persist a container not an image
+So we need container id to export.
+
+The result is a tar file which should be slightly smaller then the one of the save.
+
+Syntax: docker export container_id > xyz.tar
+                  OR
+        docker export -o xyz.tar container_id
+
+Import
+======
+Import the contents from a tarball to create a filesystem image
+
+ # cat /path/to/con1.tar | docker import - con1
+
+
+Save
+-----
+docker save is used to persist an image not a container
+So we need image id or image name to save
+It is slightly bigger then the one from export in size.
+
+Syntax: docker save image_id > xyz.tar
+                OR
+        docker save -o xyz.tar image_id
+#ls -sh xyz.tar // to verify
+
+To untar a save image
+
+# docker load -i path/to/tar
+
+
+
+
+
+
+
+
+
+
+#  https://docs.docker.com/network/macvlan/#use-ipv6
+
+###############################################################
+
+ :: Storage Drivers :: 
+   ================
+https://www.tutorialspoint.com/docker/docker_storage.htm
+ 
+   Docker has multiple storage drivers that allow one to work with the underlying storage devices. The following table shows the different storage drivers along with the technology used for the storage drivers.
+
+ Technology 	Storage Driver
+ -----------    ---------------
+
+OverlayFS 	overlay or overlay2
+
+AUFS 	              aufs
+
+Btrfs 	             brtfs
+
+Device Manager 	  devicemanager
+
+VFS 	           vfs
+
+ZFS 	           zfs
+
+Let us now discuss some of the instances in which you would use the various storage drivers −
+
+AUFS :
+======
+
+    This is a stable driver; can be used for production-ready applications.
+
+    It has good memory usage and is good for ensuring a smooth Docker experience for containers.
+
+    There is a high-write activity associated with this driver which should be considered.
+
+    It’s good for systems which are of Platform as a service type work.
+
+Devicemapper :
+============
+
+    This is a stable driver; ensures a smooth Docker experience.
+
+    This driver is good for testing applications in the lab.
+
+    This driver is in line with the main Linux kernel functionality.
+
+Btrfs :
+=======
+
+    This driver is in line with the main Linux kernel functionality.
+
+    There is a high-write activity associated with this driver which should be considered.
+
+    This driver is good for instances where you maintain multiple build pools.
+
+Ovelay :
+========
+
+    This is a stable driver and it is in line with the main Linux kernel functionality.
+
+    It has a good memory usage.
+
+    This driver is good for testing applications in the lab.
+
+ZFS :
+=====
+
+
+    This is a stable driver and it is good for testing applications in the lab.
+
+    It’s good for systems which are of Platform-as-a-Service type work.
+
+ To see the storage driver being used, issue the docker info command.
+  
+Syntax
+
+ docker info 
+
+  Options
+
+ None
+ Return Value
+
+ The command will provide all relative information on the Docker component installed on the Docker Host.
+ Example
+
+ sudo docker info 
+
+
+
+
+Docker Network
+===============
+Docker Network:
+================
+
+
+When we install docker on docker host ,docker0 ethernet adapter is created. 
+Several drivers exist by default & provide core networking functionality.
+a)bridge
+b)host
+c)overlay
+d)macvlan
+
+e)none :
+--------
+==>> For this container, disable all networking. Usually used in conjunction with a custom network driver. none is not available for swarm services. See disable container networking.
+
+# docker run --rm -dit   --network none --name no-net-alpine   alpine:latest
+
+# docker network inspect  none 
+
+# docker exec no-net-alpine ip a
+
+
+########################################################################
+
+
+Network driver summary
+
+    User-defined bridge networks are best when you need multiple containers to communicate on the same Docker host.
+    Host networks are best when the network stack should not be isolated from the Docker host, but you want other aspects of the container to be isolated.
+
+
+    Overlay networks are best when you need containers running on different Docker hosts to communicate, or when multiple applications work together using swarm services.
+
+
+    Macvlan networks are best when you are migrating from a VM setup or need your containers to look like physical hosts on your network, each with a unique MAC address. 
+
+
+ ==>   Third-party network plugins allow you to integrate Docker with specialized network stacks.
+
+
+
+
+ a)bridge: It is default network driver.If you don't specify network driver,this is type of network you are creating.
+      
+
+   
+## Bridge networks are usually used when your applications run in standalone container that need to communicate.
+		  
+
+You can also create user defined custom bridge networks.Containers can be attached and detached from user-defined networks on the fly.
+
+ 301  docker  network create  -d bridge  binunet 
+  302  docker  network   inspect  binunet
+  303  docker run  -itd  --name=server1 --network=binunet  busybox 
+  304  docker  ps
+  305  docker  exec server ip -a
+  306  docker  exec server ip a
+  307  docker  exec server1 ip a
+  308* ping  172.1
+  309  docker  exec server1 192.168.122.203
+  310  docker  exec server1 ping 192.168.122.203
+
+  =>> To  create user defined network with  subnet  and  gateway 
+
+  311  docker network create -d bridge --subnet 192.168.0.0/24 --gateway 192.168.0.1 mynet
+  312  docker  network  inspect mynet  
+ 
+  To connect  and  disconnect  container  form one network  to  another .
+  =======================================================================
+
+  313  docker  stop  server1 
+  314  docker  network connect --help 
+  315  docker  network connect mynet server1
+  316  docker  network disconnect binunet   server1
+  317  docker  start   server1 
+  318  docker  exec server1 ip a
+  319  docker  exec server1 ping  -c3 192.168.122.203
+  320  docker  exec server1 ping  -c3 node4
+    
+    docker  attach  server1 
+     # vi  /etc/hosts 
+      192.168.122.203 node4.example.com 
+      :wq
+
+    docker  exec server1 ping  -c3 node4.example.com
+    docker  exec server1 ping  -c3 node4.example.com
+
+ 
+
+
+
+
+
+==> To remove a container from the default bridge network, you need to stop the container and recreate it with different network options
+		  
+		  To list all networks available:  docker network ls
+		  To inspect network: docker network inspect <network-name>
+		  To create a network: docker network create –-driver drivername name e.g. 
+		 docker network  create --driver=bridge --subnet=192.168.3.0/24 custom-bridge (subnet,gateway optinal to mention)
+	      Attaching container to a different network : docker network connect custom-bridge myweb1
+	     To disconnect it from network: docker network disconnect custom-bridge myweb1
+          To remove network : docker network rm <network name>
+		  
+		  
+b) overlay: It provides multi host networking between docker daemons.
+            Overlay networks connect multiple Docker daemons together and enable swarm services to communicate with each other.
+			
+When you initialize a swarm or join a Docker host to an existing swarm, two new networks are created on that Docker host:
+
+ => An overlay network called ingress, which handles control and data traffic related to swarm services. 
+          
+ =>  When you create a swarm service and do not connect it to a user-defined overlay network, it connects to the ingress network by default.
+
+  => A bridge network called docker_gwbridge, which connects the individual Docker daemon to the other daemons participating in the swarm.
+	
+	   
+		   
+
+  => Have two nodes node1 node2 for practical.
+		 
+  Node1: 
+		     
+
+
+ # docker swarm init
+
+ Copy the docker swarm join token & paste in node2, it beomes now worker
+
+
+			 
+ # docker network create -d overlay myovernet
+	             
+                       
+
+ # docker network ls
+			
+ # docker service create --name myservice --network myovernet --replicas 2 alpine sleep 1d
+			
+ # docker service ls
+			 
+		       
+  get the container ip & ping it from node2 , you see that it is pinging.
+			 
+c) host:
+#########
+  If you use the host network driver for a container, that container’s network stack is not isolated from the Docker host. 
+         
+For instance, if you run a container which binds to port 80 and you use host networking, the container’s application will be available on port 80 on the host’s IP address
+		 
+host networking is available only on linux host not applicable for MAC or windows.
+
+
+       # docker network  ls  
+       # docker run --rm -d --network host --name my_nginx nginx
+       # netstat -tulpn | grep :80 
+       # curl  -s  http://localhost:80 
+
+
+d) macvlan :
+##############
+ Macvlan networks allow you to assign a MAC address to a container, making it appear as a physical device on your network. 
+
+The Docker daemon routes traffic to containers by their MAC addresses. 
+
+Using the macvlan driver is sometimes the best choice when dealing with legacy applications that expect to be directly connected to the physical network, rather than routed through the Docker host’s network stack.
+
+ Prerequisites
+---------------
+    Most cloud providers block macvlan networking. You may need physical access to your networking equipment.
+
+    The macvlan networking driver only works on Linux hosts, and is not supported on Docker for Mac, Docker for Windows, or Docker EE for Windows Server.
+
+    You need at least version 3.9 of the Linux kernel, and version 4.0 or higher is recommended.
+
+    The examples assume your ethernet interface is eth0. If your device has a different name, use that instead.
+
+
+
+
+    
+Warning: 
+========
+
+  -> You should not have an external DHCP server assigning IP addresses for the same subnet you have configured at the creation of the macvlan network.
+
+ Docker’s IPAM driver is not aware of the IP addresses already in use by external DHCP clients, leading to possible IP address conflicts in the subnet.
+
+
+ # ip route  
+
+
+
+
+  create a Docker network using the macvlan driver
+
+
+ # docker network create -d macvlan --subnet=192.168.122.0/24 --gateway=192.168.122.1 -o parent=eth0  macvlan0 
+
+
+   
+  The values given to the --subnet, --gateway, and -o host_iface parameters all need to match the ones given to the macvlan driver when it was launched. In my testing with this plugin, I found that omitting the parameters when creating the network caused errors, even though the parameters used when creating the network are duplicates of the values used when launching the macvlan driver.
+
+  # docker run --rm -itd   --network macvlan0  --name my-macvlan-alpine   alpine:latest
+
+
+ # docker  exec my-macvlan-alpine ping  -c3 192.168.122.2
+
+ # docker run --rm -itd   --network macvlan0  --name con1    alpine:latest 
+
+ # docker  exec my-macvlan-alpine ping  -c3 192.168.122.3
+
+ To create  network 
+---------------------
+ # docker network inspect  macvlan0
+
+
+
+
+
+########################
+
+
+docker network ls
+docker network create –-driver bridge binu_network
+docker network  ls
+docker  run  -it --network=binu_network --name=mybusybox busybox:latest
+docker  ps
+docker  network inspect binu_network 
+docker  run  -it --network=binu_network --name=myalpine alpine:latest  
+docker exec myalpine ping mybusybox
+docker exec  mybusybox ping myalpine 
+docker  run  -it  --name=myalpine1 alpine:latest  
+docker  network ls
+docker  network inspect bridge
+docker info
+docker  network  --help 
+docker  network  connect  binu_network myalpine1 
+docker  network inspect bridge
+docker  network inspect binu_network 
+docker  network  disconnect bridge  myalpine1
+docker  network inspect bridge
+docker  network  disconnect bridge  myalpine1
+docker  network inspect binu_network 
+docker  ps
+docker exec myalpine1 ping  myalpine
+docker exec myalpine1 ping  mybusybox
+docker exec myalpine1 ping  -c3 172.18.0.2
+docker exec myalpine1 ping  -c3 172.18.0.4
+docker exec myalpine1 ping  -c3 172.18.0.3
+docker network ls 
+
+
+Network forwarding to outside from container
+-----------------------------------------
+sysctl net.ipv4.conf.all.forwarding=1
+iptables -P FORWARD ACCEPT
+
+
+docker exec myalpine1 ping  -c3 192.168.122.203
+iptables -P FORWARD REJECT
+reboot 
+docker  ps
+systemctl  status docker  
+docker  ps -a 
+docker start  myalpine1 myalpine mybusybox
+docker  ps -a 
+docker  ps 
+ping  -c3 172.25.0.2
+ping  -c3 172.18.0.3
+ping  -c3 172.18.0.2
+ping  -c3 172.18.0.4
+docker exec myalpine1 ping  -c3 192.168.122.203
+history 
+ping  -c3 myalpine1
+docker  network inspect binu_network 
+echo  "172.18.0.2 myalpine1" >> /etc/hosts
+ping myalpine1
+mkdir centos 
+cd centos
+vim  sshd_config 
+vim Dockerfile
+docker build -t centos:v1 .
+docker ps
+docker images
+docker network ls
+docker run -itd --name=centos_server --network=binu_network centos:v1
+docker ps
+docker exec  centos_server ping 192.168.122.203
+docker run  -it -d --name server3 -p 2201:22  centos:v1
+docker run  -it -d --name=server3 -p 2201:22  centos:v1
+docker ps
+docker rm  -f  centos_server 
+docker ps -a
+docker rm -f 3fbc77b9b94b 4adb9f7d92f6 0040481e727d 672c84f04e9c 
+docker run  -itd  -p 2201:22 --name=server4  centos:v1
+
+
+ssh server4
+ssh server4 -p  2201
+docker ps 
+docker exec server4 ip a
+docker exec -it server4 /bin/bash
+ping -c3 172.17.0.2
+ssh  -p 2201  172.17.0.2
+docker  port server4
+ssh  -p 2201  172.17.0.2
+firewall-cmd  --permanent --add-port=2201/tcp 
+firewall-cmd  --reload 
+docker exec -it server4 /bin/bash  
+ssh  -p 2201  172.17.0.2
+
+
+############################################
+
+  To assign static ip address to a container  
+===============================================
+
+ 353  docker  network create --driver=bridge --subnet=172.18.0.0/16 --gateway=172.18.0.1  my_network 
+  354  docker  container  --help
+  355  docker  container  inspect  my_mysql1 
+  356  docker stop  my_mysql1
+  357  docker stop  my_mysql2
+  358  docker start  my_mysql2 my_mysql1 
+  359  docker inspect    my_mysql2 
+  360  docker inspect    my_mysql1
+  361  docker stop my_mysql2 my_mysql1 
+  362  docker network connect --ip=172.18.0.2 my_network my_mysql1
+  363  docker network connect --ip=172.18.0.3 my_network my_mysql2
+  364  docker start my_mysql2 my_mysql1 
+  365  docker inspect    my_mysql1
+  366  docker inspect    my_mysql2
+  367  docker start my_mysql1 my_mysql2 
+  368  docker inspect    my_mysql2
+  369  docker inspect    my_mysql1
+  370  docker stop my_mysql1 my_mysql2 
+  371  docker start my_mysql1 my_mysql2 
+  372  docker inspect    my_mysql1
+  373  docker inspect    my_mysql2
+  374* docker stop my_mysql my_mysql2 
+  375  docker start my_mysql2 my_mysql1 
+  376  docker inspect    my_mysql2
+######################################
+ 
+ How to change default subnet address docker bridge
+====================================================
+
+ 405  systemctl  stop  docker  
+  406  ip link set dev docker0 down  
+  407  sysctl  net.ipv4.conf.all.forwarding 
+  408  vi /etc/docker/daemon.json 
+  409  iptables -t  nat  -F  POSTROUTING 
+  410  iptables -t  nat -L -n  
+  411  iptables -F DOCKER 
+  412  systemctl  restart    docker  
+  413  ip link set dev docker0 up
+  414  iptables -t  nat -L -n  
+  415  ip addr  s docker0
+ 
+Now lets check  a container can ping to google .
+------------------------------------------------
+
+# docker run  -itd --name=con1 centos /bin/bash
+# docker attch con1
+# yum install  net-tools -y 
+
+# ifconfig 
+
+# ping google.com
+ 
+#ctrl p+q
+
+
+
+####################################### 
+ 
+
+Some important Commands
+===========================
+URL:   https://medium.com/the-code-review/clean-out-your-docker-images-containers-and-volumes-with-single-commands-b8e38253c271
+
+
+While Docker has commands for stopping and removing images, containers, networks and volumes, they are not comprehensive. Clean out and refresh your entire Docker environment with this set of instructions and set them as shell aliases.
+
+This post explains how to:
+
+    Find out the Docker data and processes that exist on your system
+    Remove unused Docker images, containers, volumes and networks
+    Remove all for a completely fresh Docker environment
+    How to reuse these commands easily with shell aliases
+
+    Docker glossary
+    - image: a read-only template with instructions for creating a Docker container
+    - container: a runnable instance of an image. You can create, start, stop, move, or delete a container using the Docker API or CLI
+    - volume: persists data generated by and used by Docker containers
+    - dangling: unused image or volume
+    - network: connects Docker containers and services
+
+List Docker processes and data
+
+A helpful starting point is to see the list of loaded docker elements on your system.
+
+    docker container ls list containers, also can be shown with docker ps
+    docker image ls list images, there is also the command docker images
+    docker volume ls list volumes
+    docker network ls lists networks
+    docker info lists the number of containers and image, as well as system wide information regarding the Docker installation
+
+Just clean out unused data and processes
+
+The main difference with cleaning out your Docker environment is whether you want a complete refresh or just to prune it.
+
+Docker provides a convenient method to remove unused containers, networks, and images:
+
+docker system prune
+
+WARNING! This will remove:
+        - all stopped containers
+        - all networks not used by at least one container
+        - all dangling images
+        - all build cache
+
+    By default, volumes are not removed to prevent important data from being deleted if there is currently no container using the volume. Use the --volumes flag when running the command to prune volumes as well 
+     — Docker docs: system prune
+
+So, to also remove the volumes (--volumes), any unused images (--all), as well as override the confirmation prompt (--force):
+
+docker system prune --all --force --volumes
+
+WARNING! This will remove:
+        - all stopped containers
+        - all networks not used by at least one container
+        - all volumes not used by at least one container
+        - all images without at least one container associated to them
+        - all build cache
+
+prune can also be used on just one aspect:
+
+    docker container prune # Remove all stopped containers
+    docker volume prune # Remove all unused volumes
+    docker image prune # Remove unused images
+
+Photo by Cibi Chakravarthi on Unsplash
+Destroy all for a complete Docker refresh
+
+The last command above will not remove all running containers. So for a complete system refresh you need to stop all containers, then run the system prune command.
+
+Fortunately, docker’s stop containers command is just docker container stop [CONTAINERS...]
+
+However, to get the right information for that command, you need to get a list of all container IDs.
+
+docker container ls -aq
+
+ls lists the containers
+
+--all / -a all containers (default shows just running)
+
+--quiet / -q only display numeric IDs
+
+So to pass the return value of this command, the IDs of all containers, to docker stop, you need to wrap it in $().
+
+    Command substitution allows the output of a command to be substituted in place of the command name itself. $(command)
+     — StackExchange: Unix & Linux — Have backticks (i.e. `cmd`) in *sh shells been deprecated?
+
+The full command for stopping all docker containers is now:
+
+docker container stop $(docker container ls -a -q)
+
+A complete Docker system clean can now be achieved by linking this with the full prune command covered earlier in this post.
+
+docker container stop $(docker container ls -a -q) && docker system prune -a -f --volumes
+
+Similarly, you now know how to combine docker commands to just remove one aspect if you prefer. Pass a list of all the IDs to the associated remove command.
+
+    Containers docker container rm $(docker container ls -a -q)
+    Images docker image rm $(docker image ls -a -q)
+    Volumes docker volume rm $(docker volume ls -q)
+    Networks docker network rm $(docker network ls -q)
+
+NOTE: There are alternative methods for doing this, for example docker ps for listing running containers, and docker rm for removing containers. I have written it this way as I feel it is more memorable to use consistent command names and syntax across docker objects.
+How to reuse them easily with shell aliases
+
+Instead of typing these out each time you can set them as aliases for your shell. You can call the commands whatever you like, here I have called them docker-clean.
+
+alias docker-clean-unused='docker system prune --all --force --volumes'
+
+alias docker-clean-all='docker stop $(docker container ls -a -q) && docker system prune -a -f --volumes'
+
+To set them to load up when you run your shell, add them to your shell’s rc file.
+
+echo [ALIASES...] \ 
+>> ~/.bashrc
+
+Then reload the file with the new aliases.
+
+source ~/.bashrc
+
+The full command for bash:
+
+echo "alias docker-clean-unused='docker system prune --all --force --volumes'
+alias docker-clean-all='docker container stop $(docker container ls -a -q) && docker system prune -a -f --volumes'" \
+
+>> ~/.bashrc && source ~/.bashrc
+
+The full command for Zsh:
+
+echo "alias docker-clean-unused='docker system prune --all --force --volumes'
+alias docker-clean-all='docker container stop $(docker container ls -a -q) && docker system prune -a -f --volumes'" \
+
+>> ~/.zshrc && source ~/.zshrc
+
+Now try the alias commands out in your terminal!
+
+MacBook-Pro% docker ps
+CONTAINER ID        IMAGE                       COMMAND                  CREATED             STATUS              PORTS                                                                                        NAMES
+7087fe30f52d        rabbitmq:3.7.3-management   "docker-entrypoint..."   4 minutes ago       Up 4 minutes        4369/tcp, 5671/tcp, 0.0.0.0:5672->5672/tcp, 15671/tcp, 25672/tcp, 0.0.0.0:15672->15672/tcp   docker_rabbit_1
+
+MacBook-Pro% docker-clean-all
+7087fe30f52d
+Deleted Containers:
+7087fe30f52dbf84568f3429c52c8b24e335ff5f024a4d3f394f2eef7f0976c6
+
+Deleted Networks:
+docker_default
+
+Deleted Volumes:
+8c295273aca8a97bfe993fddbb9c0d4f66f7e81c8d8c625adbd0893d4b4a2847
+
+Deleted Images:
+untagged: rabbitmq:3.7.3-management
+untagged: rabbitmq@sha256:0f681f18d80b2979596e8b262d06cacf7948e924d7f3a67e89be5fdea82cd116
+deleted: sha256:2f415b0e9a6e74486edbc01ed99713225f6e65d31256819120319137c280c840
+deleted: sha256:bcbbeee6343a0f57576e7c3f67dfa992c11d0e24d916e998dec5eb17c3e180f6
+...
+
+Total reclaimed space: 155.1MB
+
+The first time I did this I reclaimed 22GB of space!
+Learn more
+
+Having these commands make it quick and easy to manage your docker system. Now you know how to list and remove things in docker, why not create other aliases, for example just for cleaning out containers:
+
+alias docker-clean-containers='docker container stop $(docker container ls -a -q) && docker container rm $(docker container ls -a -q)'
+
+
+
+
+
+
+####################
+DOCKERFILE
+===========
+Dockerfile can build images autometically by reading the instructions from a dockerfile.
+
+Dockerfile is a text document that contains all the commands a user could call on the command line to assamble an image.
+
+Using Docker build we can create an automated build that execute several commands lines instruction in succession .
+
+A docker image consists of readonly layers each represents a Dockerfile instructions.
+
+
+
+
+###############################################
+INSTRUCTIONS:
+-------------
+  
+FROM - every Dockerfile starts with FROM, with the introduction of multi-stage builds as of version 17.05, you can have more than one FROM instruction in one Dockerfile.
+
+ COPY vs ADD - these two are often confused, so I’ll explain the difference.
+
+ ENV - well, setting environment variables is pretty important.
+   
+  
+	
+VOLUME - another source of confusion, what’s the difference between Dockerfile VOLUME and container volumes?
+
+   USER - when root is too mainstream.
+  
+  WORKDIR - set the working directory.
+
+  EXPOSE - get your ports right.
+
+  ONBUILD - give more flexibility to your team and clients.
+
+#################################
+FROM: 
+----
+
+-> Every Dockerfile must start with the FROM instruction in the form of FROM <image>[:tag]. This will set the base image for your Dockerfile, which means that subsequent instructions will be applied to this base image.
+
+-> The tag value is optional, if you don’t specify the tag Docker will use the tag latest and will try and use or pull the latest version of the base image during build
+
+-> You can have more than one FROM instructions in your Dockerfile .
+
+ARG: we can  use ARG instruction before FROM to set variable and value but that value can be override letter. But  usually we use  FROM instruction  useses  first .
+
+->  We can use variable to  set  different value while build the image in cli by using --build-arg before FROM instruction . so can  change the image accourding to  our requirement .
+
+EX:- 
+
+ # cat Dockerfile
+
+ ARG  MYIMAGE=centos:latest 
+ FROM $MYIMAGE
+
+:wq
+
+  First lets use  same variable value while build the images .
+
+  # docker  build  -t myimage:v1  .
+
+  Lets use different value while build the images .
+
+ #  docker  build  -t myimage:v1  --build-arg MYIMAGE=ubuntu:latest .
+
+
+COPY vs ADD
+===========
+
+Both ADD and COPY are designed to add directories and files to your Docker image.
+
+ADD can pull files from url sources, which is not possible by useing COPY .
+
+# mkdir  dir1 dir2  
+#tar  cvzf  archive.tar.gz dir1 dir2 
+
+To see archive file
+ 
+# ls
+
+# vim  Dockerfile
+
+ARG  MYIMAGE=centos:latest 
+
+FROM $MYIMAGE
+
+# To extract files from host machine to container 
+ADD archive.tar.gz /home 
+
+#To Download any file from  url link
+
+ADD http://classroom.example.com/examfun.tar.gz /mnt
+
+# To copy conents of a directory from source to destination.
+# here do have files inside binu 
+ADD binu /mnt   
+ 
+# To copy a directory into container image 
+
+ADD binu /mnt/binu
+
+################################################
+
+To add multiple files inside image 
+
+#mkdir binu 
+#cd binu
+# touch kaila balia 
+
+# vim ../Dockerfile
+
+ARG  MYIMAGE=centos:latest 
+
+FROM $MYIMAGE
+
+#ADD archive.tar.gz /home 
+ADD http://classroom.example.com/examfun.tar.gz /mnt
+
+#ADD  binu /mnt 
+#ADD  binu /mnt/binu 
+
+#ADD multiple files under /mnt . here we should be under that directory. Destionation directory should be ends # with "/" only when multiple files copy
+ADD ["kaila", "balia", "/mnt/"] 
+
+:wq
+
+To build the image
+
+# docker  build  -t myimage:v1  -f /Mydocker/Dockerfile .
+
+To run the container .
+
+# docker  run -it  --name=con9 myimage:v1 bash
+to see files
+#ls /mnt
+#exit
+
+->Now COPY instruction
+
+# vim  Dockerfile
+ARG  MYIMAGE=centos:latest
+
+FROM $MYIMAGE
+
+#To copy all conent of the directory
+#COPY  binu/* /mnt/
+
+#To copy directory from source to destination...
+
+#COPY  binu /mnt/binu
+
+#COPY multiple  specific files under /mnt . here we should be under that directory. Destination should be end with "/"
+
+COPY ["kaila", "balia", "/mnt/"]
+
+# Here copy the source contents into "/home/app/" . Here app dir autometically creates .
+COPY . /home/app/
+
+:wq
+
+############################################
+
+=> RUN 
+   ---
+ => RUN lets you execute commands inside of your Docker image. These commands get executed once at build time and get written into your Docker image as a new layer 
+
+# vim Dockerfile
+ARG  MYIMAGE=centos:latest
+
+FROM $MYIMAGE
+
+RUN mkdir -p /OSE_{mysql,registry}
+RUN ["touch", "/OSE_mysql/file1"]
+RUN yum install vim -y && yum install elinks -y && yum install ftp -y
+
+:wq
+
+##########
+  
+==> CMD 
+    ---
+
+==> CMD is a Docker run-time operation, meaning it’s not something that gets executed at build time. It happens when you run an image. A running image is called a container.
+
+
+==> CMD instruction allows you to set a default command, which will be executed only when you run container without specifying a command. 
+
+If Docker container runs with a command, the default command will be ignored. 
+If Dockerfile has more than one CMD instruction, all but last CMD instructions are ignored.
+
+ 
+CMD has three forms:
+
+    CMD ["executable","param1","param2"] (exec form, preferred)
+    CMD ["param1","param2"] (sets additional default parameters for ENTRYPOINT in exec form)
+    CMD command param1 param2 (shell form)
+
+
+
+EX:- 
+[root@node4 ~]# cat  Raju/Dockerfile 
+FROM centos
+
+WORKDIR /data
+
+RUN echo "ping google.com" >> runapp.sh 
+
+CMD sh runapp.sh
+
+:wq
+
+#docker build -t  f Raju/Dockerfile .
+# docker run -itd --name=cmdtest cmdtest1 
+# docker logs cmdtest
+
+
+EX: 
+
+# vim  Raju1/Dockerfile
+
+FROM centos
+
+WORKDIR /data
+
+RUN echo "ping google.com" >> runapp.sh
+
+ENTRYPOINT sh runapp.sh
+
+:wq
+
+#docker build -t entrytest1 -f Raju1/Dockerfile .
+#docker run -itd --name=entrytest entrytest1 
+#docker logs entrytest 
+
+Now lets see the difference between CMD and ENTRYPOINT 
+
+Here we pass a command line argument while execute "docker run" command
+# docker run -itd --name=cmdtest2 cmdtest1 date
+
+#docker logs cmdtest2 
+
+Wed Dec 26 18:56:21 UTC 2018
+
+ =>Now for ENTRYPOINT 
+
+ # docker build -t entrytest1 -f Raju1/Dockerfile .
+
+ # docker run -itd --name=entrytest2 entrytest1 date 
+
+ # docker logs entrytest2 
+
+64 bytes from maa05s10-in-f14.1e100.net (216.58.200.142): icmp_seq=1 ttl=53 time=8.04 ms
+64 bytes from maa05s10-in-f14.1e100.net (216.58.200.142): icmp_seq=2 ttl=53 time=8.00 ms
+64 bytes from maa05s10-in-f14.1e100.net (216.58.200.142): icmp_seq=3 ttl=53 time=8.26 ms
+64 bytes from maa05s10-in-f14.1e100.net (216.58.200.142): icmp_seq=4 ttl=53 time=8.00 ms
+64 bytes from maa05s10-in-f14.1e100.net (216.58.200.142): icmp_seq=5 ttl=53 time=7.98 ms
+64 bytes from maa05s10-in-f14.1e100.net (216.58.200.142): icmp_seq=6 ttl=53 time=8.11 ms
+64 bytes from maa05s10-in-f14.1e100.net (216.58.200.142): icmp_seq=7 ttl=53 time=8.09 ms
+64 bytes from maa05s10-in-f14.1e100.net (216.58.200.142): icmp_seq=8 ttl=53 time=8.27 ms
+
+
+When a user run a conatiner with an arguments(commands) at the end of "docker run" command, The specified commands overide the default arguments in CMD instructions so the container will run the argument given at the end of the "ocker run" command .
+
+But if the same argument is given  along with entrypoint instuction in dockerfile, even when a user gives any arguments at the end of the docker run command that will not override entrypoint instruction. 
+So instruction will run as it is.
+
+# vim Dockerfile
+ ARG  MYIMAGE=centos:latest
+ 
+ FROM $MYIMAGE
+ 
+ARG and ENV 
+===========>
+Both instruction are used to set environment variables and used for same purpose, but actually not in same functionality. So we must be aware of which instruction to be used for our requirements .
+
+EX:-
+
+[root@node4 ~]# cat  Raju1/Dockerfile 
+FROM centos
+
+ARG JAVA_HOME=/opt/java
+
+ENV JAVA_VERSION=2.0
+
+:wq
+ # docker build -t java1 -f Raju1/Dockerfile . 
+ # docker run  -itd --name=java_con1 java1 
+ # docker exec  -it java_con1 /bin/bash 
+ 
+  -> Now check by executing env command inside container and you can see whether ENV instruction variable is available or not, but variable set by ARG will not show. So docker ARG can be used for temporary variable assinement and docker env can be used for permanent variable assinement .
+
+
+
+
+
+VOLUME:
+=======
+
+It create an mount point with the specified name and marks it as holding externally mounted volumes from the native host on other containers .
+
+ex:- 
+
+FROM abutu
+
+RUN mkdir /myvolume
+
+RUN echo "Hello World" >> /myvolume/mydata
+
+VOLUME /myvolume
+ 
+:wq
+
+docker built -t mycon1:v1 .
+
+NOTE:- when using Windows-based containers , the destination of a volume inside the container must be one of:
+
+1) A non-existing or empty directory .
+
+2) A drive other then 'C'
+
+
+USER: 
+====
+
+The user directive is used to set the UID(or username) which is the run the container based on the image being built .
+
+FROM fedora:24
+
+RUN dbf install -y sudo && adduser  manoj && echo "manoj ALL=(root) NOPASSWD: ALL" >> /etc/suders.d/manoj && chmod 0440 /etc/suders.d/manoj
+
+RUN su - manoj -c "touch me"
+
+CMD ["su", "-", "manoj", "-c", "/bin/bash"]
+
+Dockerfile for MySql
+====================
+
+#mkdir -p ~/my-mysql/sql-scripts
+#cd ~/my-mysql/sql-scripts
+#vim  CreateTable.sql
+
+CREATE TABLE employees (
+first_name varchar(25),
+last_name  varchar(25),
+department varchar(15),
+email  varchar(50)
+);
+
+
+#vim  InsertData.sql
+
+INSERT INTO employees (first_name, last_name, department, email) VALUES ('Stigal', 'bandala', 'IT', 'binu@mail.com');
+
+#vim  ../Dockerfile
+
+	# Derived from official mysql image (our base image)
+	FROM mysql
+	
+	# Add a database
+	ENV MYSQL_DATABASE company
+
+	# Add the content of the sql-scripts/ directory to your image
+	# All scripts in docker-entrypoint-initdb.d/ are automatically
+	# executed during container startup
+	COPY ./sql-scripts/ /docker-entrypoint-initdb.d/
+
+#cd ~/my-mysql
+#docker biuld -t  mysql:v1  .
+#docker run -d -p 3306:3306 --name mysql -e MYSQL_ROOT_PASSWORD="redhat" mysql:v1
+#docker exec -it mysql bash
+
+Now insdie container
+
+#mysql -uroot -p'redhat'   -----  If it will through error, Come outside the container
+
+
+#docker  top  mysql
+#ps -A | grep mysql
+#pkill mysql
+#pkill mysqld
+#docker restart  mysql
+#docker  exec  -it mysql bash
+
+Inside container again check login happening or not
+
+#mysql -uroot -p'redhat'
+
+
+If root password is not working,login using empty password, then reset it
+
+#update mysql.user set authentication_string=password('redhat') where user='root';
+
+
+
+
+
+
+Dockerfile for Tomcat
+=====================
+
+url: https://stackoverflow.com/questions/27719353/dockerfile-for-tomcat
+url: https://support.cmfirstgroup.com/hc/en-us/articles/115002378523-How-to-Create-and-Run-Apache-Tomcat-Docker-Container
+
+usrl: https://github.com/kirillF/centos-tomcat
+
+
+
+
+
+
+#mkdir /tomcat
+#cd /tomcat
+#vim context.xml
+
+<Context antiResourceLocking="false" privileged="true" >
+    <!-- <Valve className="org.apache.catalina.valves.RemoteAddrValve"
+        allow="127\.\d+\.\d+\.\d+|::1|0:0:0:0:0:0:0:1" /> -->
+    <Manager sessionAttributeValueClassNameFilter="java\.lang\.(?:Boolean|Integer|Long|Number|String)|org\.apache\.catalina\.filters\.CsrfPreventionFilter\$LruCache(?:\$1)?|java\.util\.(?:Linked)?HashMap"/>
+</Context>
+
+
+#vim tomcat-users.xml
+<tomcat-users xmlns="http://tomcat.apache.org/xml"
+              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xsi:schemaLocation="http://tomcat.apache.org/xml tomcat-users.xsd"
+              version="1.0">
+  <user username="admin" password="secret" roles="manager-gui"/>
+</tomcat-users>
+
+
+
+#vim Dockerfile
+
+FROM tomcat
+
+MAINTAINER Binayak
+
+RUN apt-get update && apt-get -y upgrade
+
+WORKDIR /usr/local/tomcat
+
+COPY tomcat-users.xml /usr/local/tomcat/conf/tomcat-users.xml
+COPY context.xml /usr/local/tomcat/webapps/manager/META-INF/context.xml
+
+EXPOSE 8080
+
+
+
+#docker build -t mytomcat .
+#docker run -d -p 8080:8080 --name tomcat mytomcat
+#docker cp jenkins.war tomcat:/usr/local/tomcat/webapps/jenkins.war
+
+Check in browser
+http://192.168.122.203:8080  
+http://192.168.122.203:8080/jenkins
+
+
+
+
+
+
+Another
+========
+
+url:https://github.com/kirillF/centos-tomcat/blob/master/Dockerfile
+
+
+#mkdir tomcat2
+#cd tomcat2
+#vim Dockerfile
+# Centos based container with Java and Tomcat
+FROM centos:centos7
+MAINTAINER Binayak
+
+# Install prepare infrastructure
+RUN yum -y update && \
+ yum -y install wget && \
+ yum -y install tar
+
+# Prepare environment 
+ENV JAVA_HOME /opt/java
+ENV CATALINA_HOME /opt/tomcat
+ENV PATH $PATH:$JAVA_HOME/bin:$CATALINA_HOME/bin:$CATALINA_HOME/scripts
+
+# Install Oracle Java8
+ENV JAVA_VERSION 8u191
+ENV JAVA_BUILD 8u191-b12
+ENV JAVA_DL_HASH 2787e4a523244c269598db4e85c51e0c
+
+RUN wget --no-check-certificate --no-cookies --header "Cookie: oraclelicense=accept-securebackup-cookie" \
+ http://download.oracle.com/otn-pub/java/jdk/${JAVA_BUILD}/${JAVA_DL_HASH}/jdk-${JAVA_VERSION}-linux-x64.tar.gz && \
+ tar -xvf jdk-${JAVA_VERSION}-linux-x64.tar.gz && \
+ rm jdk*.tar.gz && \
+ mv jdk* ${JAVA_HOME}
+
+
+# Install Tomcat
+ENV TOMCAT_MAJOR 8
+ENV TOMCAT_VERSION 8.5.35
+
+RUN wget http://mirror.linux-ia64.org/apache/tomcat/tomcat-${TOMCAT_MAJOR}/v${TOMCAT_VERSION}/bin/apache-tomcat-${TOMCAT_VERSION}.tar.gz && \
+ tar -xvf apache-tomcat-${TOMCAT_VERSION}.tar.gz && \
+ rm apache-tomcat*.tar.gz && \
+ mv apache-tomcat* ${CATALINA_HOME}
+
+RUN chmod +x ${CATALINA_HOME}/bin/*sh
+
+# Create Tomcat admin user
+ADD create_admin_user.sh $CATALINA_HOME/scripts/create_admin_user.sh
+ADD tomcat.sh $CATALINA_HOME/scripts/tomcat.sh
+RUN chmod +x $CATALINA_HOME/scripts/*.sh
+
+# Create tomcat user
+RUN groupadd -r tomcat && \
+ useradd -g tomcat -d ${CATALINA_HOME} -s /sbin/nologin  -c "Tomcat user" tomcat && \
+ chown -R tomcat:tomcat ${CATALINA_HOME}
+
+WORKDIR /opt/tomcat
+
+EXPOSE 8080
+EXPOSE 8009
+
+USER tomcat
+CMD ["tomcat.sh"]
+
+
+
+
+
+
+Another
+========
+
+#vim Dockerfile
+
+FROM ubuntu:latest
+RUN apt-get -y update && apt-get -y upgrade
+RUN apt-get -y install openjdk-8-jdk wget
+RUN mkdir /usr/local/tomcat
+RUN wget http://www-us.apache.org/dist/tomcat/tomcat-8/v8.5.16/bin/apache-tomcat-8.5.16.tar.gz -O /tmp/tomcat.tar.gz
+RUN cd /tmp && tar xvfz tomcat.tar.gz
+RUN cp -Rv /tmp/apache-tomcat-8.5.16/* /usr/local/tomcat/
+EXPOSE 8080
+CMD /usr/local/tomcat/bin/catalina.sh run
+
+
+
+
+
+Dockerfile for Nodejs
+=====================
+
+url: https://buddy.works/guides/how-dockerize-node-application
+
+#mkdir helloworld
+#cd helloworld
+#yum install npm -y
+#npm init    //it will create a package.json file
+#cat package.josn
+
+{
+  "name": "helloworld",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC"
+}
+
+#npm install express --save        // After this package.json should look like below
+#cat package.json
+
+{
+  "name": "helloworld",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.16.4"
+  }
+}
+
+
+
+#vim index.js
+
+
+
+//Load express module with `require` directive
+var express = require('express')
+var app = express()
+
+//Define request response in root URL (/)
+app.get('/', function (req, res) {
+  res.send('Hello World!')
+})
+
+//Launch listening server on port 8081
+app.listen(8081, function () {
+  console.log('app listening on port 8081!')
+})
+
+
+
+
+#node index.js   //Run the App
+
+Go to http://ipaddress:8081/ in your browser to view it
+
+
+Part 2: Dockerizing Node.js application
+----------------------------------------
+
+
+#vim Dockerfile
+
+
+
+FROM node:7
+WORKDIR /app
+COPY package.json /app
+RUN npm install
+COPY . /app
+CMD node index.js
+EXPOSE 8081
+
+
+
+#docker build -t hello-world .
+#docker run -d -p 8081:8081 --name nodejs hello-world
+
+
+#curl http://localhost:8081
+
+
+######################################################
+
+Dockerfile for SSH access to container:=>
+======================================
+
+
+
+
+Ubuntu
+=======
+
+mkdir myssh && cd myssh
+vim Dockerfile
+
+FROM ubuntu:16.04
+RUN apt-get update -y && apt-get install openssh-server -y
+RUN mkdir /var/run/sshd
+RUN echo 'root:redhat' | chpasswd
+RUN sed -i 's/PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+EXPOSE 22
+CMD ["/usr/sbin/sshd", "-D"]
+
+docker build -t myssh:v1 .
+docker image ls
+
+#docker run -itd --name testssh myssh:v1
+
+	or
+
+#docker run -itd -p 1234:22 --name testssh myssh:v1     //here we provided userdefind host port 1234
+
+	or
+
+#docker run -itd -P --name testssh myssh:v1          // here -P option will create a random port for host
+ 
+
+
+#docker inspect testssh |grep -i ipaddr
+
+
+
+
+#ssh root@<container-IP> & provide redhat as password
+
+
+	or
+
+#ssh root@<containername>   //after name resolution make entry in /etc/hosts file
+
+	or
+
+#ssh root@<containerIP> -p 22
+
+	or
+
+#ssh root@localhost -p <userdefind_port or random_port>   // this will work from outside the host also
+
+
+Note: If you get error like REMOTE HOST IDENTIFICATION HAS CHANGED; remove known_hosts file from base machine.
+
+
+================================================================================
+Centos
+======
+FROM centos:7
+RUN yum update -y && yum install openssh-server -y
+RUN mkdir /var/run/sshd
+RUN echo redhat | passwd --stdin root
+RUN sed -i 's/#PermitRootLogin yes/PermitRootLogin yes/' /etc/ssh/sshd_config
+RUN ssh-keygen -t rsa -f /etc/ssh/ssh_host_rsa_key -N ''
+EXPOSE 22
+ENTRYPOINT ["/usr/sbin/sshd", "-D"]
+
+docker build -t centossh .
+docker image ls
+docker run -itd --name ssh2 centossh
+docker inspect centossh |grep -i ipaddr
+ssh root@IP 
+
+Note: If you get error like REMOTE HOST IDENTIFICATION HAS CHANGED; remove known_hosts file from base machine.
+
+====================================================================================
+Simple WEB SERVER
+FROM centos:7
+RUN yum update -y && yum install httpd -y
+COPY index.html /var/www/html/
+CMD ["/usr/sbin/httpd","-D","FOREGROUND"]
+EXPOSE 80
+
+docker build -t mywebserver .
+docker image ls
+docker run -itd -p 1235:80 mywebserver
+
+
+curl -s http://localhost:1235
+
+======================================================================================
+Dockerfile for jenkins
+
+
+# vim Dockerfile
+
+FROM jenkins/jenkins:lts
+
+USER root
+
+RUN apt-get update && \
+apt-get -y install apt-transport-https \
+    ca-certificates \
+    curl \
+    gnupg2 \
+    software-properties-common && \
+curl -fsSL https://download.docker.com/linux/$(. /etc/os-release; echo "$ID")/gpg > /tmp/dkey; apt-key add /tmp/dkey && \
+add-apt-repository \
+    "deb [arch=amd64] https://download.docker.com/linux/$(. /etc/os-release; echo "$ID") \
+    $(lsb_release -cs) \
+    stable" && \
+apt-get update && \
+apt-get -y install docker-ce
+RUN apt-get install -y docker-ce
+
+RUN usermod -a -G docker jenkins
+
+USER jenkins
+
+:wq
+ 
+# docker run -d  --name jenkins-docker -p 8080:8080 -v /var/run/docker.sock:/var/run/docker.sock gustavoapolinario/jenkins-docker 
+
+
+#docker  volume ls
+
+To get the password for jenkin initial admin password
+
+# cat  /var/lib/docker/volumes/e974c71385c1f9e7138625e931065acb9cfea1cfb4b54d769df46cd47dc4ed1f/_data/secrets/initialAdminPassword 
+
+The url links for jenkin 
+-------------------------
+https://medium.com/@gustavo.guss/jenkins-building-docker-image-and-sending-to-registry-64b84ea45ee9
+
+
+==> For ping command package name is   "iputils-ping" 
+
+For Ubuntu image docker file .
+
+ex:
+---
+FROM ubuntu
+RUN apt-get update && apt-get install -y iputils-ping
+CMD bash
+
+--------------------
+
+[root@demo1 1]# cat  Dockerfile 
+FROM centos
+
+MAINTAINER Binu
+RUN yum install  httpd -y 
+
+COPY index.html /var/www/html/
+
+CMD ["/usr/sbin/httpd",  "-D", "FOREGROUND"]
+
+EXPOSE 80
+
+[root@demo1 1]# cat  index.html 
+Apache Server 1
+
+===> To build The Image 
+
+#  docker build -t raju:apache . 
+
+To verify the image build or not  
+=========
+
+ # docker  images 
+-> To run  the container from build image 
+# docker run  -itd --name=binuapache1   -P raju:apache
+
+=> To verify 
+ # docker  ps 
+
+# curl -s localhost:32769
+
+ [root@demo1 1]# cat  /tmp/Dockerfile 
+FROM centos/httpd
+
+MAINTAINER Binu
+
+COPY index.html /var/www/html/
+
+CMD ["/usr/sbin/httpd",  "-D", "FOREGROUND"]
+
+EXPOSE 80
+
+----------------
+
+==> To build the new image 
+#docker build -t image:version . 
+
+ To verify the image build or not  
+=========
+
+ # docker  images 
+-> To run  the container from build image 
+# docker run  -itd --name=binuapache1   -P raju:apache
+
+# docker  ps 
+
+# curl  -s  localhost:port  
+
+
+#To run container using public dns  
+===================================
+#docker container run -it --name mycontainer2 --dns 8.8.8.8 --dns-search "mydomain.local" ubuntu
+root@64892f5624cb:/# cat /etc/resolv.conf
+search mydomain.local
+nameserver 8.8.8.8
+root@64892f5624cb:/# ping google.com 
+root@64892f5624cb:/# ping  8.8.8.8
+
+#ocker container inspect mycontainer2
+
+
+
+DOCKER COMPOSE
+==============
+
+
+==> Compose is a tool for defining and running multi-container Docker applications. With Compose, you use a YAML file to configure your application’s services. Then, with a single command, you create and start all the services from your configuration. 
+
+
+
+==> Define the services that make up our app in docker-compose.yml so they can be run together in an isolated environment.
+
+==> Compose has commands for managing the whole lifecycle of your application:
+
+ ->   Start, stop, and rebuild services
+ ->   View the status of running services
+ ->   Stream the log output of running services
+ ->   Run a one-off command on a service
+
+Features
+
+The features of Compose that make it effective are:
+
+   * Multiple isolated environments on a single host
+   * Preserve volume data when containers are created
+   * Only recreate containers that have changed
+   * Variables and moving a composition between environments
+
+
+
+Docker for Mac and Windows will automatically install the latest version of Docker Engine for you.
+
+
+
+To install  docker compose in linux there are two ways . 
+
+
+Step:-  
+
+# yum  install -y python-pip
+
+# pip install  docker-compose 
+
+# docker-compose --version 
+
+# docker-cmpose -v 
+
+# docker-compose version
+
+
+########To uninstall Docker Compose if you installed using pip .
+
+# pip uninstall docker-compose
+
+
+ANOTHER WAY :-
+=============
+==> Run this command to download the latest version of Docker Compose:
+
+==> Check from git url latest one 
+
+  Url link is https://github.com/docker/compose/releases
+
+ # sudo curl -L "https://github.com/docker/compose/releases/download/1.23.1/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+
+  (or)
+
+  # curl -L https://github.com/docker/compose/releases/download/1.23.2/docker-compose-`uname -s`-`uname -m` 
+-o /usr/local/bin/docker-compose
+
+ # chmod  a+x  /usr/local/bin/docker-compose
+
+ # docker-compose --version
+docker-compose version 1.23.1, build 1719ceb 
+
+
+===> To uninstall Docker Compose if you installed using curl:
+
+     # sudo rm /usr/local/bin/docker-compose
+
+
+Lets discuss a simple docker compose file: 
+-------------------------------------------
+
+# mkdir dockerfile 
+
+# cd dockerfile
+
+# vim docker-compose.yml 
+
+services: 
+  web: 
+    image: hello-world
+    ports: 
+     - '9090:80'
+
+  database: 
+    image: redis
+
+:wq
+
+>>Now lets check the syntax of docker compose file 
+
+# docker-compose config
+[root@node1 dockercomposefile]# docker-compose config 
+ERROR: The Compose file './docker-compose.yml' is invalid because:
+Unsupported config option for services: 'web'
+
+
+# vim docker-compose.yml 
+version: '1'
+services: 
+  web: 
+    image: hello-world
+    ports: 
+     - '9090:80'
+
+  database: 
+    image: redis
+
+:wq
+
+>> Now lets check again syntax 
+
+# docker-compose config
+
+ERROR: Version in "./docker-compose.yml" is invalid. You might be seeing this error because you're using the wrong Compose file version. Either specify a supported version (e.g "2.2" or "3.3") and place your service definitions under the `services` key, or omit the `version` key and place your service definitions at the root of the file to use version 1.
+For more on the Compose file format versions, see https://docs.docker.com/compose/compose-file/
+
+
+
+
+>>>Now lets check this link to understand more detailed manner 
+
+
+   check in browser 
+
+https://docs.docker.com/compose/compose-file/
+
+  -> Compose and Docker compatibility matrix
+----------------------------------------------
+
+ ---> There are several versions of the Compose file format – 1, 2, 2.x, and 3.x. The table below is a quick look. For full details on what each version includes and how to upgrade, see About versions and upgrading.
+
+ ---> This table shows which Compose file versions support specific Docker releases.
+
+Compose file format 	Docker Engine release
+3.7 	                      18.06.0+
+3.6 	                      18.02.0+
+3.5 	                      17.12.0+
+3.4 	                      17.09.0+
+3.3 	                      17.06.0+
+3.2 	                      17.04.0+
+3.1 	                      1.13.1+
+3.0 	                      1.13.0+
+2.4 	                      17.12.0+
+2.3 	                      17.06.0+
+2.2 	                      1.13.0+
+2.1 	                      1.12.0+
+2.0 	                      1.10.0+
+1.0 	                      1.9.1.+
+
+  ---> In addition to Compose file format versions shown in the table, the Compose itself is on a release schedule, as shown in Compose releases, but file format versions do not necessarily increment with each release. For example, Compose file format 3.0 was first introduced in Compose release 1.10.0, and versioned gradually in subsequent releases .
+
+# vim docker-compose.yml 
+
+version: '2.2'
+services: 
+  web: 
+    image: nginx:latest
+    scale: 2
+  database: 
+    image: redis:latest
+:wq
+
+To run the compose file 
+-------------------------
+# docker-compose up -d 
+
+To  down the container 
+---------------------
+
+# docker-compose down  (Stop and remove containers, networks, images, and volumes)
+
+==> To verify container is running or not .
+
+# docker ps
+
+# docker ps -a
+
+# docker-compose stop  (Stop services)
+
+# docker-compose start (To Start services)
+
+# docker-compose restart (To Restart services )
+
+# docker-compose ps (List containers )
+
+# docker-compose top (Display the running processes)
+
+#docker-compose logs (View output from containers)
+
+# docker-compose stop (By default it will take 10 seconds to stop the container)
+
+# docker-compose stop -t 30 (To take little more time means 30 seconds )
+
+#  docker-compose  stop  -t 30 web  (to stop specific service)
+
+# docker-compose rm  (to remove stooped containers)
+
+# docker-compose rm -f web1 (to remove porticular service ) 
+
+To run container with ports: 
+===============================
+[root@node1 dockercomposefile]# cat  docker-compose.yml 
+version: '2.2'
+services: 
+  web: 
+    image: nginx:latest
+    ports: 
+    - "8088:80/tcp"
+  database: 
+    image: redis:latest
+
+  centos: 
+    image: centos
+   
+:wq
+
+# docker-compose up -d 
+
+ 
+ 
+
+To run haproxy with different web application .
+===============================================
+# mkdir  /DockerCompose
+# cd /DockerCompose
+# vim  docker-compose.yml
+
+ports:
+          - "82:80"
+    haproxy: 
+           version: "3"
+
+services:
+    web1:  
+        image: dockercloud/hello-world 
+        container_name: web1 
+        ports: 
+          - "81:80"
+    web2:
+        image: dockercloud/hello-world
+        container_name: web2
+        build: ./haproxy
+           container_name: haproxy 
+           ports: 
+             - "80:80"
+           
+:wq
+
+# mkdir haproxy
+
+# cd haproxy 
+
+# cat haproxy/Dockerfile 
+FROM  haproxy:1.7 
+
+COPY  haproxy.cfg /usr/local/etc/haproxy/haproxy.cfg 
+
+:wq
+ 
+ 
+# vim  haproxy/haproxy.cfg 
+global
+
+
+defaults
+   mode http
+   timeout connect 5000ms
+   timeout client 5000ms
+   timeout server 5000ms
+
+frontend http-in
+    bind *:80
+    
+
+    acl  has_web1 path_beg /web1 
+    acl  has_web2 path_beg /web2 
+
+    use_backend web1 if has_web1 
+    use_backend web2 if has_web2
+
+    default_backend web1 
+
+backend web1 
+  # reqrep  ^([^\ ]*\ /)web1[/]?(.*) \1\2
+   server web1 web1:80 check  
+backend web2
+ #  reqrep  ^([^\ ]*\ /)web2[/]?(.*) \1\2
+   server web2 web2:80 check 
+
+:wq
+
+
+# cd ../
+
+To check the syntax error 
+-------------------------
+#docker-compose config (If we can see the contents of docker-compose yml file means it is correct)
+
+To run 
+======
+#docker-compose up --build 
+
+To compose down 
+==============
+
+# docker-compose down 
+
+#######################################
+
+Creating wordpress and mysql  by using docker-compose file .
+------------------------------------------------------------
+
+# mkdir  /wordpress 
+# cd /wordpress
+# vim  docker-compose.yml 
+version: "3"
+
+service:
+
+            volumes: 
+              - mysql_data:/var/lib/mysql 
+            environment: 
+              MYSQL_ROOT_PASSWORD: redhat
+        
+        wordpress:
+                image: wordpress
+                ports: 
+                  - "4000:80"
+                volumes: 
+                  - mywebsite_data:/var/www/html 
+                environment:
+                   WORDPRESS_DB_PASSWORD: redhat
+                
+                depends_on: 
+                        - mysql
+                links: 
+                  - mysql
+volumes: 
+    mysql_data:
+    mywebsite_data: 
+vices:
+        mysql: 
+            image: mariadb
+            ports: 
+              - "3306:3306"
+
+:wq
+
+# docker-compose up -d 
+
+check in url link by passing http://192.168.122.173:4000 and create a site 
+
+username root , password redhat  , mail manoj@gmail.com ...
+
+
+#docker ps  
+
+# docker exec -it wordpress_mysql1 bash  
+
+#mysql -uroot -predhat 
+
+# show databases;
+
+# use wordpress ; 
+
+# select * from wp_users ;
+
+> exit
+# ctrl_p+q 
+
+#docker volume ls 
+
+#cd /var/lib/docker/volumes/pathto mysql ...
+
+=============================================
+
+Introduction To swarm cluster : 
+==============================
+  ==> Docker Engine 1.12 introduced a new swarm mode for natively managing a cluster of Docker Engines called a swarm.
+ 
+ => Docker swarm is a technique to create and maintain a cluster of Docker Engines.
+Service deployment. Service deployed in any node can be accessed on other nodes in the same cluster.
+
+ 
+
+###Docker Swarm is a feature of Docker that makes it easy to run Docker hosts and containers at scale. A Docker Swarm, or Docker cluster, is made up of one or more Dockerized hosts that function as manager nodes, and any number of worker nodes. Setting up such a system requires careful manipulation of the Linux firewall.
+
+   Operations for all overlay networks
+   Create an overlay network
+
+    Prerequisites:
+
+    Firewall rules for Docker daemons using overlay networks
+
+    You need the following ports open to traffic to and from each Docker host participating on an overlay network:
+         
+   TCP port 2377 for cluster management communications
+   
+   TCP and UDP port 7946 for communication among nodes
+   
+   UDP port 4789 for overlay network traffic
+
+        Before you can create an overlay network, you need to either initialize your Docker daemon as a swarm manager using docker swarm init or join it to an existing swarm using docker swarm join. Either of these creates the default ingress overlay network which is used by swarm services by default. You need to do this even if you never plan to use swarm services. Afterward, you can create additional user-defined overlay networks.
+
+
+
+
+The network ports required for a Docker Swarm to function properly are:
+
+ ===>  TCP port 2376 for secure Docker client communication. This port is required for Docker Machine to work. Docker Machine is used to orchestrate Docker hosts.
+
+ ===>  TCP port 2377. This port is used for communication between the nodes of a Docker Swarm or cluster. It only needs to be opened on manager nodes.
+
+ ===> TCP and UDP port 7946 for communication among nodes (container network discovery).
+  
+ ===>  UDP port 4789 for overlay network traffic (container ingress networking).
+
+ ===> Note:  Aside from those ports, port 22 (for SSH traffic) and any other ports needed for specific services to run on the cluster have to be open.
+
+On the node that will be a Swarm manager, use the following commands to open the necessary ports:
+
+    firewall-cmd --add-port=2376/tcp --permanent
+    firewall-cmd --add-port=2377/tcp --permanent
+    firewall-cmd --add-port=7946/tcp --permanent
+    firewall-cmd --add-port=7946/udp --permanent
+    firewall-cmd --add-port=4789/udp --permanent
+
+
+
+    firewall-cmd --reload
+
+     systemctl restart  docker 
+
+
+Now that you know what to do, you can add the rules you need by using the iptables utility. This first set of commands should be executed on the nodes that will serve as Swarm managers.
+
+    iptables -I INPUT 5 -p tcp --dport 2376 -j ACCEPT
+    iptables -I INPUT 6 -p tcp --dport 2377 -j ACCEPT
+    iptables -I INPUT 7 -p tcp --dport 7946 -j ACCEPT
+    iptables -I INPUT 8 -p udp --dport 7946 -j ACCEPT
+    iptables -I INPUT 9 -p udp --dport 4789 -j ACCEPT
+
+Those rules are runtime rules and will be lost if the system is rebooted. To save the current runtime rules to a file so that they persist after a reboot, type:
+
+   # /usr/libexec/iptables/iptables.init save
+
+   # systemctl  restart docker 
+
+   # iptables -L --line-numbers 
+
+ Note: If you'll be testing applications on the cluster that requires outside network access, be sure to open the necessary ports. For example, if you'll be testing a Web application that requires access on port 80, add a rule that grants access to that port using the following command on all the nodes (manager and workers) in the cluster:
+
+   # iptables -I INPUT rule-number -p tcp --dport 80 -j ACCEPT
+
+Be sure to insert the rule above the catchall reject rule. 
+
+  ==> Unsupported docker-compose v2 keywords
+
+      The below keywords are still not supported.
+
+    "build",
+    "cap_add",
+    "cap_drop",
+    "cgroup_parent",
+    "devices",
+    "dns",
+    "dns_search",
+    "domainname",
+    "external_links",
+    "ipc",
+    "links",
+    "mac_address",
+    "network_mode",
+    "privileged",
+    "read_only",
+    "restart",
+    "security_opt",
+    "shm_size",
+    "stop_signal",
+    "tmpfs"
+
+
+SwarmKit is a toolkit for orchestrating distributed systems at any scale. It includes primitives for node discovery, raft-based consensus, task scheduling and more.
+
+Its main benefits are:
+
+    Distributed: SwarmKit uses the Raft Consensus Algorithm in order to coordinate and does not rely on a single point of failure to perform decisions.
+    Secure: Node communication and membership within a Swarm are secure out of the box. SwarmKit uses mutual TLS for node authentication, role authorization and transport encryption, automating both certificate issuance and rotation.
+    Simple: SwarmKit is operationally simple and minimizes infrastructure dependencies. It does not need an external database to operate.
+
+Overview
+
+Machines running SwarmKit can be grouped together in order to form a Swarm, coordinating tasks with each other. Once a machine joins, it becomes a Swarm Node. Nodes can either be worker nodes or manager nodes.
+
+    Worker Nodes are responsible for running Tasks using an Executor. SwarmKit comes with a default Docker Container Executor that can be easily swapped out.
+    Manager Nodes on the other hand accept specifications from the user and are responsible for reconciling the desired state with the actual cluster state.
+
+An operator can dynamically update a Node's role by promoting a Worker to Manager or demoting a Manager to Worker.
+
+Tasks are organized in Services. A service is a higher level abstraction that allows the user to declare the desired state of a group of tasks. Services define what type of task should be created as well as how to execute them (e.g. run this many replicas at all times) and how to update them (e.g. rolling updates).
+Features
+
+Some of SwarmKit's main features are:
+
+    Orchestration
+
+        Desired State Reconciliation: SwarmKit constantly compares the desired state against the current cluster state and reconciles the two if necessary. For instance, if a node fails, SwarmKit reschedules its tasks onto a different node.
+
+        Service Types: There are different types of services. The project currently ships with two of them out of the box
+            Replicated Services are scaled to the desired number of replicas.
+            Global Services run one task on every available node in the cluster.
+
+        Configurable Updates: At any time, you can change the value of one or more fields for a service. After you make the update, SwarmKit reconciles the desired state by ensuring all tasks are using the desired settings. By default, it performs a lockstep update - that is, update all tasks at the same time. This can be configured through different knobs:
+            Parallelism defines how many updates can be performed at the same time.
+            Delay sets the minimum delay between updates. SwarmKit will start by shutting down the previous task, bring up a new one, wait for it to transition to the RUNNING state then wait for the additional configured delay. Finally, it will move onto other tasks.
+
+        Restart Policies: The orchestration layer monitors tasks and reacts to failures based on the specified policy. The operator can define restart conditions, delays and limits (maximum number of attempts in a given time window). SwarmKit can decide to restart a task on a different machine. This means that faulty nodes will gradually be drained of their tasks.
+
+    Scheduling
+
+        Resource Awareness: SwarmKit is aware of resources available on nodes and will place tasks accordingly.
+
+        Constraints: Operators can limit the set of nodes where a task can be scheduled by defining constraint expressions. Multiple constraints find nodes that satisfy every expression, i.e., an AND match. Constraints can match node attributes in the following table. Note that engine.labels are collected from Docker Engine with information like operating system, drivers, etc. node.labels are added by cluster administrators for operational purpose. For example, some nodes have security compliant labels to run tasks with compliant       requirements.
+    node attribute 	      matches 	                          example
+    ##################   ########################           ###################
+
+        node.id 	     node's ID 	                      node.id == 2ivku8v2gvtg4
+        node.hostname 	     node's hostname 	              node.hostname != node-2
+        node.ip 	     node's IP address 	              node.ip != 172.19.17.0/24
+        node.role 	     node's manager or worker roleiode.role == manager
+        node.platform.os     node's operating system       node.platform.os == linux
+        node.platform.arch   node's architecture 	      node.platform.arch == x86_64
+        node.labels 	     node's labels added by cluster admins node.labels.security == high
+        engine.labels 	     Docker Engine's labels                engine.labels.operatingsystem== ubuntu 14.04
+
+        Strategies: The project currently ships with a spread strategy which will attempt to schedule tasks on the least loaded nodes, provided they meet the constraints and resource requirements.
+
+
+    Cluster Management
+
+        State Store: Manager nodes maintain a strongly consistent, replicated (Raft based) and extremely fast (in-memory reads) view of the cluster which allows them to make quick scheduling decisions while tolerating failures.
+        Topology Management: Node roles (Worker / Manager) can be dynamically changed through API/CLI calls.
+        Node Management: An operator can alter the desired availability of a node: Setting it to Paused will prevent any further tasks from being scheduled to it while Drained will have the same effect while also re-scheduling its tasks somewhere else (mostly for maintenance scenarios).
+
+    Security
+
+
+        Mutual TLS: All nodes communicate with each other using mutual TLS. Swarm managers act as a Root Certificate Authority, issuing certificates to new nodes.
+        Token-based Join: All nodes require a cryptographic token to join the swarm, which defines that node's role. Tokens can be rotated as often as desired without affecting already-joined nodes.
+        Certificate Rotation: TLS Certificates are rotated and reloaded transparently on every node, allowing a user to set how frequently rotation should happen (the current default is 3 months, the minimum is 30 minutes).
+
+
+
+
+  Docker Swarm Visualizer
+==========================
+
+ docker service create \
+  --name=viz \
+  --publish=9000:8080/tcp \
+  --constraint=node.role==manager \
+  --mount=type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock \
+  alexellis2/visualizer-arm:latest
+
+
+=========================================================
+
+
+url link-1>> https://www.ionos.com/digitalguide/server/know-how/docker-orchestration-with-swarm-and-compose/
+
+url link-2 >> https://docs.docker.com/machine/overview/#what-is-docker-machine
+
+url link-3 >>  https://docs.docker.com/get-started/part4/#recap-and-cheat-sheet-optional
+url link-4 >> https://docs.docker.com/get-started/
+==================================================================================================
+
+
+url-link:-> https://medium.com/@Grigorkh/docker-for-beginners-part-4-deploying-an-app-to-a-swarm-620b4d67e7c3
+
+
+-> Now lets  start with docker  swarm practical 
+
+ # docker swarm init (To generate tokens for  worker and amanger ) 
+Swarm initialized: current node (2bl46b01c3ncmy9byemgjr7fv) is now a manager.
+
+To add a worker to this swarm, run the following command:
+
+    docker swarm join \
+    --token SWMTKN-1-5cfyyz1wxkq7jqhrxk945r9qjeqtfv7sgorkevyj55finep6wv-ay6tbcmjiv1dkkb3amv4xhzfm \
+    192.168.122.101:2377
+
+To add a manager to this swarm, run 'docker swarm join-token manager' and follow the instructions.
+-------------------------
+
+ If local machine have multiple interface having multiple ip . In this above way  if we create  swarm cluster  it will take a landom ip  of host machine . To avoid that we can  use another method to  create swarm cluster .
+
+ #  docker  swarm  init  --advertise-addr 192.168.122.101 
+Swarm initialized: current node (vzrsoh27uew2b0fmei6hafyr7) is now a manager.
+
+To add a worker to this swarm, run the following command:
+
+    docker swarm join \
+    --token SWMTKN-1-3akdol3v219uecfb40t5rsvqmdybsdwnekgi9p4wzmz3prsbmy-7wvtrqcwzfl4vgq2yvusg78ve \
+    192.168.122.101:2377
+
+To add a manager to this swarm, run 'docker swarm join-token manager' and follow the instructions.
+
+--------------------------
+
+=> Letter if we want to  add another swarm worker then  we can use the below  command 
+
+ #  docker swarm join-token worker 
+To add a worker to this swarm, run the following command:
+
+    docker swarm join \
+    --token SWMTKN-1-3akdol3v219uecfb40t5rsvqmdybsdwnekgi9p4wzmz3prsbmy-7wvtrqcwzfl4vgq2yvusg78ve \
+    192.168.122.101:2377
+
+>> Letter if we want to  add another swarm manager then  we can use the below  command
+
+ # docker swarm join-token manager  
+To add a manager to this swarm, run the following command:
+
+    docker swarm join \
+    --token SWMTKN-1-3akdol3v219uecfb40t5rsvqmdybsdwnekgi9p4wzmz3prsbmy-67gzin53syc9w1v5qmkifirkb \
+    192.168.122.101:2377
+
+--> The above  generated tokens we can  use to add manager  and  workers in  swarm cluster.
+
+--> To  remove  from  swarm cluster .
+
+# docker swarm leave (or) docker swarm leave --force (First we remove worker then we remore manager ) 
+
+
+--> Monitor swarm health
+
+You can monitor the health of manager nodes by querying the docker nodes API in JSON format through the /nodes HTTP endpoint. Refer to the nodes API documentation for more information.
+
+ To check  the manager is reachable or not  .
+
+ # docker node inspect <manager-id> --format "{{ .ManagerStatus.Reachability }}"
+
+
+  To query the status of the node as a worker that accept tasks:
+
+# docker node inspect <manager-id>  --format "{{ .Status.State }}"
+
+
+  -> Docker manager nodes store the swarm state and manager logs in the /var/lib/docker/swarm/ directory. In 1.13 and higher, this data includes the keys used to encrypt the Raft logs. Without these keys, you cannot restore the swarm.
+ 
+--> Lets run  a  simple  we application  in swarm mode .
+
+  # docker service  create  --name web -p 8088:80 --replicas=2 nginx 
+
+ --> To verify 
+
+ # docker service ls 
+
+ --> To check list of tasks in which node running 
+
+ # docker  service  ps web 
+
+ -->  To scale in  docker services
+  #  docker  service  scale web=10 
+
+  --> To verify service 
+
+  # docker service ps web  
+
+  --> To access the application using any  node ip in the cluster .Go to browser
+  
+  -->  In url link http://machineip:port 
+
+ 
+  --> To scale down  service 
+  # docker  service  scale web=2 
+
+--> To check  the logs of the service
+ 
+  # docker service logs web 
+--> To remove the service from  cluster 
+  #  docker  service  rm  web
+
+
+ Now lets discuss Docker Stack in swarm 
+--------------------------------------
+
+A stack is a collection of services that make up an application in a specific environment. A stack file is a file in YAML format that defines one or more services, similar to a docker-compose.yml file for Docker Compose but with a few extensions .
+
+-> Docker Stack sits at a higher level than Docker containers and helps to manage the orchestration of multiple containers across several machines .
+
+-> The deployment of many inter-communicating microservices is where Docker Stack comes in .  This is a YAML file written in a domain-specific language to specify Docker services, containers and networks. Given a compose file, it is as simple as one command to deploy the stack across an entire swarm of Docker nodes.
+
+-> To deploy a stack you need to be running on a swarm master node .
+
+ ==> Lets run  mysql and wordpress service  using docker stack deploy 
+
+ # mkdir wordpress 
+ # cd wordpress 
+ # vim  docker-compose.yml 
+version: "3"
+
+services:
+        mysql: 
+            image: mariadb
+            ports: 
+              - "3306:3306"
+            volumes: 
+              - mysql_data:/var/lib/mysql 
+            environment: 
+              MYSQL_ROOT_PASSWORD: redhat
+        
+        wordpress:
+                image: wordpress
+                ports: 
+                  - "4000:80"
+                volumes: 
+                  - mywebsite_data:/var/www/html 
+                environment:
+                   WORDPRESS_DB_PASSWORD: redhat
+                
+                depends_on: 
+                        - mysql
+                links: 
+                  - mysql
+volumes: 
+    mysql_data:
+    mywebsite_data: 
+
+
+
+:wq
+
+ To run  the application stack 
+ #  docker stack deploy --compose-file=docker-compose.yml wordpress 
+ 
+ To  check the app stack is running or  not in swarm cluster . 
+ # docker stack ps wordpress 
+ 
+     
+
+ Check that your services are deployed
+
+# docker service ls
+
+ When our services are running on a swarm it is trivial to scale the number of instances
+
+# docker service scale wordpress_mysql=5
+
+ --> And the underlying containers can be seen by running
+ # docker ps
+
+ --> To list service in stack
+
+  # docker stack   services wordpress
+
+ --> To  remove the entire  stack 
+
+  # docker stack  rm wordpress 
+
+
+ ==> Important notes for interview prospective .
+
+What about Docker Compose?
+
+A lot of people wonder why we need stacks when we already have Docker Compose. The most important difference is that docker-compose defines containers while stacks define services.
+Services
+
+Compose has no notion of the new “services” concept in Docker 1.12. In other words when you run a docker-compose up command, docker-compose will ensure that the state of the containers is correct in the moment that the command is run. If a container needs to be brought up because it’s not already up right now, then it will be done. However compose does not monitor the state continuously, so if a container dies unexpectedly in 5 minutes time then composer won’t restart the container (unless you run docker-compose up again).
+
+The concept of services introduced in Docker 1.12 allows the docker engine to know about the state of the services that we want up at all times. Now that the engine knows about the desired state, it can take immediate measures to correct things when the actual state differs. If a container dies unexpectedly at any time, the engine can bring another one up automatically. If an entire node goes down taking a few containers with it, the engine detects it and can bring these containers back up on a healthy node.
+
+Stacks are very similar to docker-compose except they define services while docker-compose defines containers. Stacks allow us to tell the docker engine the definition of the services that should be running, so the engine can monitor and orchestrate the services.
+
+==> Lests have another  example with stack deploy .
+
+ Install git  for clone 
+  # yum  install  git -y
+  
+ --> Now clone from url
+  
+#  git clone https://github.com/docker/example-voting-app.git
+
+# cd example-voting-app/
+
+ Check the stack  yml file 
+
+#cat  docker-stack.yml
+version: "3"
+services:
+
+  redis:
+    image: redis:alpine
+    networks:
+      - frontend
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 2
+        delay: 10s
+      restart_policy:
+        condition: on-failure
+  db:
+    image: postgres:9.4
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks:
+      - backend
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+  vote:
+    image: dockersamples/examplevotingapp_vote:before
+    ports:
+      - 5000:80
+    networks:
+      - frontend
+    depends_on:
+      - redis
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 2
+      restart_policy:
+        condition: on-failure
+  result:
+    image: dockersamples/examplevotingapp_result:before
+    ports:
+      - 5001:80
+    networks:
+      - backend
+    depends_on:
+      - db
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 2
+        delay: 10s
+      restart_policy:
+        condition: on-failure
+
+  worker:
+    image: dockersamples/examplevotingapp_worker
+    networks:
+      - frontend
+      - backend
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels: [APP=VOTING]
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 120s
+      placement:
+        constraints: [node.role == manager]
+
+  visualizer:
+    image: dockersamples/visualizer:stable
+    ports:
+      - "8080:8080"
+    stop_grace_period: 1m30s
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+
+networks:
+  frontend:
+  backend:
+
+volumes:
+  db-data:
+
+:wq
+ 
+
+ -> To deploy the stack 
+
+ #  docker stack deploy --compose-file docker-stack.yml vote
+
+ -> To verify the stack 
+ 
+  # docker  stack  ps vote
+
+  And also  verify visualizer in url link  by using swarm manager  node ip and port 8080 
+
+ In url link->   http:192.168.37:8080
+
+
+  --> To verify no of services in stack 
+
+  # docker stack service  vote
+  
+  
+ To verify  service 
+
+ # docker service  ls 
+
+ 
+ Now  lets understand if any node in the cluster  having some issue to  run any  container .
+ 
+
+ To view list of nodes 
+  
+ # docker node ls
+
+ 
+
+ To  make inacive a node and all our application will move to any other avail node in cluster  .
+
+ The "AVAILABILITY" column shows whether or not the scheduler can assign tasks to the node:
+
+ "Active" means that the scheduler can assign tasks to the node.
+ 
+ "Pause" means the scheduler doesn’t assign new tasks to the node, but existing tasks remain running.
+   
+ "Drain" means the scheduler doesn’t assign new tasks to the node. The scheduler shuts down any existing tasks and schedules them on an available node.
+
+
+  The MANAGER STATUS column shows node participation in the Raft consensus:
+
+   No value indicates a worker node that does not participate in swarm management.
+   
+   Leader means the node is the primary manager node that makes all swarm management and orchestration decisions for the swarm.
+ 
+   Reachable means the node is a manager node participating in the Raft consensus quorum. If the leader node becomes unavailable, the node is eligible for election as the new leader.
+ 
+   Unavailable means the node is a manager that can’t communicate with other managers. If a manager node becomes unavailable, you should either join a new manager node to the swarm or promote a worker node to be a manager.
+
+
+
+
+ #docker  node  update  --availability  drain    demo2.example.com 
+
+ To make active again any node in the cluster .
+
+ # docker  node  update  --availability  active      demo2.example.com 
+
+ To inspect  indivisual manager in the cluster .
+
+ #   docker node inspect self --pretty 
+
+https://www.theseus.fi/bitstream/handle/10024/146845/Moilanen_Miika_Opinnaytetyo.pdf?sequence=1&isAllowed=y
+ 
+
+
+
+
+
+#pip freeze
+#pip uninstall docker
+#pip install 'docker>=3.0.0,<3.0.1'
+
+Docker Compose for HAProxy Load balancer with two container
+------------------------------------------------------------
+http://www.inanzzz.com/index.php/post/w14j/creating-a-single-haproxy-and-two-apache-containers-with-docker-compose
+
+
+
+
+
+
+
+
+
+																																													
+
